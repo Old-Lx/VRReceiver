@@ -70,3 +70,8 @@ Testing/
 
 
 .vs/
+
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
