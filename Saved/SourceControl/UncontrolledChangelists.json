@@ -1,0 +1,17 @@
+{
+	"version": 1,
+	"changelists": [
+		{
+			"guid": "00000000000000000000000000000000",
+			"description": "Default Uncontrolled Changelist",
+			"files": [
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/BP_ReceptorVR.uasset",
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/M_PantallaVR.uasset",
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/XRFramework/Levels/L_XRTemplate_BuiltData.uasset",
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/XRFramework/Levels/L_XRTemplate.umap",
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/XRFramework/Blueprints/BP_XRPawn.uasset",
+				"C:/Users/lartrax/Documents/Unreal Projects/VRReceiver/Content/XRFramework/Blueprints/BP_XRGameMode.uasset"
+			]
+		}
+	]
+}

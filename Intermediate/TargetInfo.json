@@ -1,0 +1,14 @@
+{
+	"Targets": [
+		{
+			"Name": "VRReceiver",
+			"Path": "..\\Source\\VRReceiver.Target.cs",
+			"Type": "Game"
+		},
+		{
+			"Name": "VRReceiverEditor",
+			"Path": "..\\Source\\VRReceiverEditor.Target.cs",
+			"Type": "Editor"
+		}
+	]
+}
