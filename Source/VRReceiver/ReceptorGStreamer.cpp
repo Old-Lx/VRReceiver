@@ -14,74 +14,81 @@ AReceptorGStreamer::AReceptorGStreamer()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	VideoTexture = nullptr;
+	DepthTexture = nullptr;
 	Pipeline = nullptr;
+	PipelineDepth = nullptr;
 	AppSink = nullptr;
+	AppSinkDepth = nullptr;
 }
 
 void AReceptorGStreamer::BeginPlay()
 {
-	// Crear la textura en blanco a 640x480
+	// Crear ambas texturas dinámicas (El formato BGRA es nativo para Unreal)
 	VideoTexture = UTexture2D::CreateTransient(640, 480, PF_B8G8R8A8);
 	VideoTexture->UpdateResource();
 
+	DepthTexture = UTexture2D::CreateTransient(640, 480, PF_B8G8R8A8);
+	DepthTexture->UpdateResource();
+
 	IniciarGStreamer();
+	IniciarGStreamerProfundidad();
 
 	Super::BeginPlay();
 }
 
 void AReceptorGStreamer::IniciarGStreamer()
 {
-	if (!gst_is_initialized()) {
-		gst_init(nullptr, nullptr);
-	}
+	if (!gst_is_initialized()) gst_init(nullptr, nullptr);
 
-	// Pipeline UDP configurado para recibir la telemetría
 	FString PipelineStr = "udpsrc port=5000 ! application/x-rtp, encoding-name=H264, payload=96 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw, format=BGRA ! appsink name=videoshink sync=false max-buffers=1 drop=true";
-
-	GstError* GstErr = nullptr; // Uso de la macro renombrada
+	GstError* GstErr = nullptr;
 	Pipeline = gst_parse_launch(TCHAR_TO_UTF8(*PipelineStr), &GstErr);
 
-	if (GstErr) {
-		UE_LOG(LogTemp, Error, TEXT("Error GStreamer: %s"), UTF8_TO_TCHAR(GstErr->message));
-		g_clear_error(&GstErr);
-		return;
+	if (!GstErr) {
+		AppSink = GST_APP_SINK(gst_bin_get_by_name(GST_BIN(Pipeline), "videoshink"));
+		gst_element_set_state(Pipeline, GST_STATE_PLAYING);
 	}
+}
 
-	GstElement* SinkElement = gst_bin_get_by_name(GST_BIN(Pipeline), "videoshink");
-	AppSink = GST_APP_SINK(SinkElement);
+void AReceptorGStreamer::IniciarGStreamerProfundidad()
+{
+	// Puerto 5001 y Payload 97 (Debe coincidir con tu emisor en Debian)
+	FString PipelineDepthStr = "udpsrc port=5001 ! application/x-rtp, encoding-name=H264, payload=97 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw, format=BGRA ! appsink name=depthsink sync=false max-buffers=1 drop=true";
+	GstError* GstErr = nullptr;
+	PipelineDepth = gst_parse_launch(TCHAR_TO_UTF8(*PipelineDepthStr), &GstErr);
 
-	gst_element_set_state(Pipeline, GST_STATE_PLAYING);
+	if (!GstErr) {
+		AppSinkDepth = GST_APP_SINK(gst_bin_get_by_name(GST_BIN(PipelineDepth), "depthsink"));
+		gst_element_set_state(PipelineDepth, GST_STATE_PLAYING);
+	}
 }
 
 void AReceptorGStreamer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	ActualizarTextura();
+	// Extraer fotogramas de ambos buffers en cada frame del motor gráfico
+	ActualizarTextura(AppSink, VideoTexture);
+	ActualizarTextura(AppSinkDepth, DepthTexture);
 }
 
-void AReceptorGStreamer::ActualizarTextura()
+void AReceptorGStreamer::ActualizarTextura(GstAppSink* Sink, UTexture2D* TexturaDestino)
 {
-	if (!AppSink || !VideoTexture) return;
+	if (!Sink || !TexturaDestino) return;
 
-	GstSample* Sample = gst_app_sink_try_pull_sample(AppSink, 0);
+	GstSample* Sample = gst_app_sink_try_pull_sample(Sink, 0);
 	if (Sample) {
 		GstBuffer* Buffer = gst_sample_get_buffer(Sample);
 		GstMapInfo MapInfo;
 
 		if (gst_buffer_map(Buffer, &MapInfo, GST_MAP_READ)) {
-			// Definir la región de actualización (toda la imagen de 640x480)
 			FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, 640, 480);
-
-			// Copiar los datos a un nuevo bloque de memoria para el hilo de renderizado
 			uint8* TextureData = new uint8[MapInfo.size];
 			FMemory::Memcpy(TextureData, MapInfo.data, MapInfo.size);
 
-			// Inyectar los píxeles directo a la GPU sin destruir el recurso (con Lambda de limpieza)
-			VideoTexture->UpdateTextureRegions(0, 1, Region, 640 * 4, 4, TextureData, [](uint8* SrcData, const FUpdateTextureRegion2D* Regions) {
+			TexturaDestino->UpdateTextureRegions(0, 1, Region, 640 * 4, 4, TextureData, [](uint8* SrcData, const FUpdateTextureRegion2D* Regions) {
 				delete[] SrcData;
 				delete Regions;
 				});
-
 			gst_buffer_unmap(Buffer, &MapInfo);
 		}
 		gst_sample_unref(Sample);
@@ -94,6 +101,11 @@ void AReceptorGStreamer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		gst_element_set_state(Pipeline, GST_STATE_NULL);
 		gst_object_unref(Pipeline);
 		Pipeline = nullptr;
+	}
+	if (PipelineDepth) {
+		gst_element_set_state(PipelineDepth, GST_STATE_NULL);
+		gst_object_unref(PipelineDepth);
+		PipelineDepth = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
 }
